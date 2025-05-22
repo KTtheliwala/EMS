@@ -137,6 +137,13 @@ namespace TheTecniQ.Services.Attendance
 
         }
 
+        public async Task<IList<EMS_tblEmployeeAttendance>> GetAllDataAsync_Rpt(GridRequestModel objGrid)
+        {
+            IQueryable<EMS_tblEmployeeAttendance> query = from u in _EmployeeAttendanceRepository.Table select u;
+            var data = await _EmployeeAttendanceRepository.GetAllAsync(query => query);
+            return data;
+        }
+
         //public async Task<IList<EMS_tblEmployeeAttendance>> GetAllAsync_Rpt(GridRequestModel objGrid)
         //{
 

@@ -16,6 +16,7 @@ namespace TheTecniQ.Services.Attendance
     {
         Task<IList<DropdDownEmployeeModel>> ActiveEmployeeSearch(SearchActiveEmployeeModel search);
         Task<IPagedList<EMS_tblEmployeeAttendance>> GetAllAsync(GridRequestModel objGrid);
+        Task<IList<EMS_tblEmployeeAttendance>> GetAllDataAsync_Rpt(GridRequestModel objGrid);
         Task<IList<EMS_tblEmployeeAttendance>> GetAllAsync_Rpt(GridRequestModel objGrid);
         Task<EMS_tblEmployeeAttendance> GetEmployeeAttendence(int employeeId, DateTime dt);
         Task<decimal?> GetEmployeeExpense(int employeeId, DateTime dt);

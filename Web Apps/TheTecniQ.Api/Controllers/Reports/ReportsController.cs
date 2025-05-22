@@ -47,38 +47,39 @@ namespace TheTecniQ.Api.Controllers.Reports
         public async Task<IActionResult> List(GridRequestModel objGrid)
         {
 
-            var List = await _iemployeeAttendanceService.GetAllAsync_Rpt(objGrid);
+            var list = await _iemployeeAttendanceService.GetAllDataAsync_Rpt(objGrid);
 
-            if (List != null && List.Count > 0)
+            List<dynamic> monthWiseSummary = new List<dynamic>();
+
+            if (list != null && list.Count > 0)
             {
-                int index = 1;
-                foreach (var item in List)
-                {
-                    item.SrNo = index++;
-                }
+                var grouped = list
+                    .Where(x => x.AttendanceDate != null)
+                    .GroupBy(x => x.AttendanceDate.ToString("MMM-yyyy"))
+                    .OrderBy(g => g.Min(x => x.AttendanceDate))
+                    .Select((g, index) => new
+                    {
+                        SrNo = index + 1,
+                        MonthYear = g.Key,
+                        TotalAmountSum = g.Sum(x => x.TotalAmount ?? 0)
+                    }).ToList<dynamic>();
+
+                monthWiseSummary = grouped;
             }
+
             if (objGrid.ResponseType == EnumResponseType.JSON)
             {
-                return Ok(new ApiResponse { StatusCode = (int)ApiStatusCode.Status200OK, Data = List });
+                return Ok(new ApiResponse
+                {
+                    StatusCode = (int)ApiStatusCode.Status200OK,
+                    Data = monthWiseSummary
+                });
             }
             else
             {
-                if (List != null && List.Count > 0)
-                {
-                    List.Add(new EMS_tblEmployeeAttendance()
-                    {
-                        EmployeeName = "Total",
-                        TotalAmount = List.Sum(x => x.TotalAmount ?? 0),
-                        TotalExpenseAmount = List.Sum(x => x.TotalExpenseAmount ?? 0),
-                        TotalExtraAmount = List.Sum(x => x.TotalExtraAmount ?? 0),
-                        PayableAmount = List.Sum(x => x.PayableAmount ?? 0),
-                        VoucherNo = null
-                    }); ;
-
-                }
-                objGrid.Filename = "MonthwiseRpt";
-                IPagedList<EMS_tblEmployeeAttendance> data = new PagedList<EMS_tblEmployeeAttendance>(List, 0, 0, 0);
-                return Ok(data.ToListResponse(objGrid, "Monthwise Report", "MonthwiseRpt"));
+                objGrid.Filename = "MonthwiseSummary";
+                IPagedList<dynamic> data = new PagedList<dynamic>(monthWiseSummary, 0, 0, 0);
+                return Ok(data.ToListResponse(objGrid, "Monthwise Summary Report", "MonthwiseSummary"));
             }
         }
 
@@ -130,39 +131,82 @@ namespace TheTecniQ.Api.Controllers.Reports
         public async Task<IActionResult> DepartmentWiseList(GridRequestModel objGrid)
         {
 
-            var List = await _iemployeeAttendanceService.GetAllAsync_Rpt(objGrid);
+            var list = await _iemployeeAttendanceService.GetAllDataAsync_Rpt(objGrid);
 
-            if (List != null && List.Count > 0)
+            var monthWiseDepartmentSummary = new List<dynamic>();
+
+            if (list != null && list.Count > 0)
             {
-                int index = 1;
-                foreach (var item in List)
+                var months = list
+                    .Where(x => x.AttendanceDate != null)
+                    .Select(x => x.AttendanceDate.ToString("MMM-yy"))
+                    .Distinct()
+                    .OrderBy(m => DateTime.ParseExact(m, "MMM-yy", null))
+                    .ToList();
+
+                // Get distinct departments
+                var departments = list
+                    .Where(x => !string.IsNullOrEmpty(x.DepartmentName))
+                    .Select(x => x.DepartmentName)
+                    .Distinct()
+                    .OrderBy(d => d)
+                    .ToList();
+
+                foreach (var dept in departments)
                 {
-                    item.SrNo = index++;
+                    var row = new Dictionary<string, object>();
+                    row["Department"] = dept;
+                    decimal grandTotal = 0;
+
+                    foreach (var month in months)
+                    {
+                        var total = list
+                            .Where(x => x.DepartmentName == dept &&
+                                        x.AttendanceDate.ToString("MMM-yy") == month)
+                            .Sum(x => x.TotalAmount ?? 0);
+
+                        row[month] = total;
+                        grandTotal += total;
+                    }
+
+                    row["GrandTotal"] = grandTotal;
+                    monthWiseDepartmentSummary.Add(row);
                 }
+
+                // Add overall grand total row
+                var grandRow = new Dictionary<string, object>();
+                grandRow["Department"] = "Grand Total";
+                decimal grandTotalOverall = 0;
+
+                foreach (var month in months)
+                {
+                    var total = list
+                        .Where(x => x.AttendanceDate.ToString("MMM-yy") == month)
+                        .Sum(x => x.TotalAmount ?? 0);
+
+                    grandRow[month] = total;
+                    grandTotalOverall += total;
+                }
+
+                grandRow["GrandTotal"] = grandTotalOverall;
+                monthWiseDepartmentSummary.Add(grandRow);
             }
+
             if (objGrid.ResponseType == EnumResponseType.JSON)
             {
-                return Ok(new ApiResponse { StatusCode = (int)ApiStatusCode.Status200OK, Data = List });
+                return Ok(new ApiResponse
+                {
+                    StatusCode = (int)ApiStatusCode.Status200OK,
+                    Data = monthWiseDepartmentSummary
+                });
             }
             else
             {
-                if (List != null && List.Count > 0)
-                {
-                    List.Add(new EMS_tblEmployeeAttendance()
-                    {
-                        EmployeeName = "Total",
-                        TotalAmount = List.Sum(x => x.TotalAmount ?? 0),
-                        TotalExpenseAmount = List.Sum(x => x.TotalExpenseAmount ?? 0),
-                        TotalExtraAmount = List.Sum(x => x.TotalExtraAmount ?? 0),
-                        PayableAmount = List.Sum(x => x.PayableAmount ?? 0),
-                        VoucherNo = null
-                    });
-                    objGrid.PreConcateData = "Department: " + List.Select(x => x.DepartmentName).FirstOrDefault();
-                }
-                objGrid.Filename = "DepartmentwiseRpt";
-                IPagedList<EMS_tblEmployeeAttendance> data = new PagedList<EMS_tblEmployeeAttendance>(List, 0, 0, 0);
-                return Ok(data.ToListResponse(objGrid, "Department wise Report", "DepartmentwiseRpt"));
+                objGrid.Filename = "MonthwiseDepartmentSummary";
+                IPagedList<dynamic> data = new PagedList<dynamic>(monthWiseDepartmentSummary, 0, 0, 0);
+                return Ok(data.ToListResponse(objGrid, "Monthwise Department Summary Report", "MonthwiseDepartmentSummary"));
             }
+
         }
 
         [HttpPost]
@@ -171,40 +215,105 @@ namespace TheTecniQ.Api.Controllers.Reports
         public async Task<IActionResult> DesignationWiseList(GridRequestModel objGrid)
         {
 
-            var List = await _iemployeeAttendanceService.GetAllAsync_Rpt(objGrid);
+            var list = await _iemployeeAttendanceService.GetAllDataAsync_Rpt(objGrid);
 
-            if (List != null && List.Count > 0)
+            var designationMonthSummary = new List<dynamic>();
+
+            if (list != null && list.Count > 0)
             {
-                int index = 1;
-                foreach (var item in List)
+                // Get months list 
+                var months = list
+                    .Where(x => x.AttendanceDate != null)
+                    .Select(x => x.AttendanceDate.ToString("MMM-yy"))
+                    .Distinct()
+                    .OrderBy(m => DateTime.ParseExact(m, "MMM-yy", null))
+                    .ToList();
+
+                // Get distinct designation names
+                var designations = list
+                    .Where(x => !string.IsNullOrEmpty(x.DesignationName))
+                    .Select(x => x.DesignationName)
+                    .Distinct()
+                    .OrderBy(d => d)
+                    .ToList();
+
+                foreach (var desg in designations)
                 {
-                    item.SrNo = index++;
+                    var row = new Dictionary<string, object>();
+                    row["Designation"] = desg;
+                    decimal totalDays = 0;
+                    decimal totalAmount = 0;
+
+                    foreach (var month in months)
+                    {
+                        decimal days = list
+                            .Where(x => x.DesignationName == desg &&
+                                        x.AttendanceDate.ToString("MMM-yy") == month)
+                            .Sum(x => x.AttendDays ?? 0);
+
+                        decimal amt = list
+                            .Where(x => x.DesignationName == desg &&
+                                        x.AttendanceDate.ToString("MMM-yy") == month)
+                            .Sum(x => x.TotalAmount ?? 0);
+
+                        row[$"{month}_Days"] = days;
+                        row[$"{month}_Amt"] = amt;
+
+                        totalDays += days;
+                        totalAmount += amt;
+                    }
+
+                    row["TotalDays"] = totalDays;
+                    row["TotalAmount"] = totalAmount;
+
+                    designationMonthSummary.Add(row);
                 }
+
+                // Add grand total row
+                var grandRow = new Dictionary<string, object>();
+                grandRow["Designation"] = "Grand Total";
+
+                decimal grandDays = 0;
+                decimal grandAmt = 0;
+
+                foreach (var month in months)
+                {
+                    decimal monthDays = list
+                        .Where(x => x.AttendanceDate.ToString("MMM-yy") == month)
+                        .Sum(x => x.AttendDays ?? 0);
+
+                    decimal monthAmt = list
+                        .Where(x => x.AttendanceDate.ToString("MMM-yy") == month)
+                        .Sum(x => x.TotalAmount ?? 0);
+
+                    grandRow[$"{month}_Days"] = monthDays;
+                    grandRow[$"{month}_Amt"] = monthAmt;
+
+                    grandDays += monthDays;
+                    grandAmt += monthAmt;
+                }
+
+                grandRow["TotalDays"] = grandDays;
+                grandRow["TotalAmount"] = grandAmt;
+
+                designationMonthSummary.Add(grandRow);
             }
+
             if (objGrid.ResponseType == EnumResponseType.JSON)
             {
-                return Ok(new ApiResponse { StatusCode = (int)ApiStatusCode.Status200OK, Data = List });
+                return Ok(new ApiResponse
+                {
+                    StatusCode = (int)ApiStatusCode.Status200OK,
+                    Data = designationMonthSummary
+                });
             }
             else
             {
-                if (List != null && List.Count > 0)
-                {
-                    List.Add(new EMS_tblEmployeeAttendance()
-                    {
-                        EmployeeName = "Total",
-                        TotalAmount = List.Sum(x => x.TotalAmount ?? 0),
-                        TotalExpenseAmount = List.Sum(x => x.TotalExpenseAmount ?? 0),
-                        TotalExtraAmount = List.Sum(x => x.TotalExtraAmount ?? 0),
-                        PayableAmount = List.Sum(x => x.PayableAmount ?? 0),
-                        VoucherNo = null
-                    }); 
-                    objGrid.PreConcateData = "Designation: "+List.Select(x => x.DesignationName).FirstOrDefault();
-
-                }
-                objGrid.Filename = "DesignationwiseRpt";
-                IPagedList<EMS_tblEmployeeAttendance> data = new PagedList<EMS_tblEmployeeAttendance>(List, 0, 0, 0);
-                return Ok(data.ToListResponse(objGrid, "Designation Report", "DesignationwiseRpt"));
+                objGrid.Filename = "MonthwiseDesignationSummary";
+                IPagedList<dynamic> data = new PagedList<dynamic>(designationMonthSummary, 0, 0, 0);
+                return Ok(data.ToListResponse(objGrid, "Monthwise Designation Summary Report", "MonthwiseDesignationSummary"));
             }
+
         }
 
         [HttpPost]
